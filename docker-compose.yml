@@ -1,0 +1,40 @@
+services:
+  db:
+    # Multi-arch build by a docker-postgis maintainer; postgis/postgis is amd64-only.
+    image: imresamu/postgis:17-3.5
+    environment:
+      POSTGRES_USER: demo
+      POSTGRES_PASSWORD: demo
+      POSTGRES_DB: delivery
+    ports:
+      - "${DB_PORT:-5442}:5432"
+    volumes:
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+      - ./queries:/queries:ro
+    healthcheck:
+      # TCP check: the temporary server used during init scripts listens on the socket only.
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "demo", "-d", "delivery"]
+      interval: 2s
+      retries: 30
+
+  api:
+    build: ./api
+    environment:
+      DATABASE_URL: postgresql://demo:demo@db:5432/delivery
+    ports:
+      - "${API_PORT:-8100}:8000"
+    volumes:
+      - ./web:/app/web:ro
+    depends_on:
+      db:
+        condition: service_healthy
+
+  test:
+    build: ./api
+    profiles: [test]
+    command: ["pytest", "-q"]
+    environment:
+      DATABASE_URL: postgresql://demo:demo@db:5432/delivery
+    depends_on:
+      db:
+        condition: service_healthy
